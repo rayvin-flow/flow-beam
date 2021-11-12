@@ -1,0 +1,14 @@
+version: '3.7'
+
+services:
+  flow-beam:
+    image: rayvinflow/flow-beam:1.x
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    ports:
+      - "${LISTEN_PORT}:${LISTEN_PORT}"
+    container_name: flow-beam
