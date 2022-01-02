@@ -2,6 +2,7 @@ version: '3.7'
 
 services:
   flow-beam:
+    platform: linux/amd64
     image: rayvinflow/flow-beam:1.x
     env_file:
       - .env

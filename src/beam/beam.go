@@ -94,6 +94,7 @@ func GetEvents(requestEventType string, startHeight uint64, endHeight uint64) (G
 		for _, node := range accessNodes {
 			if node.StartHeight <= startRequestHeight && (node.EndHeight == 0 || node.EndHeight >= startRequestHeight) {
 				accessNode = &node
+				break
 			}
 		}
 

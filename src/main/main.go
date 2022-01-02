@@ -37,6 +37,19 @@ func serve(ctx context.Context, listenPort string) (err error) {
 		}
 	}()
 
+	log.Debug().Msg(fmt.Sprintf("ACCESS_NODES=%s", os.Getenv("ACCESS_NODES")))
+
+	accessNodes := beam.GetAccessNodes()
+
+	log.Debug().Msg("Access Nodes:")
+	for _, node := range accessNodes {
+		var legacy = 0
+		if node.IsLegacy {
+			legacy = 1
+		}
+		log.Debug().Msg(fmt.Sprintf("%d - %d: %s (Legacy=%d)", node.StartHeight, node.EndHeight, node.Address, legacy))
+	}
+
 	log.Debug().Msg("Server started")
 
 	<-ctx.Done()
