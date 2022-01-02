@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/onflow/cadence"
 	"github.com/onflow/flow-go-sdk/client/convert"
+	rpcconvert "github.com/onflow/flow-go/engine/common/rpc/convert"
 	"github.com/onflow/flow-go/model/flow"
 	"github.com/onflow/flow/protobuf/go/flow/access"
 	"github.com/rs/zerolog/log"
@@ -35,6 +36,7 @@ type GetEventsResponse struct {
 }
 
 type GetLatestBlockHeightResponse struct {
+	LatestBlockId     flow.Identifier
 	LatestBlockHeight uint64
 	ApiCalls          uint32
 }
@@ -77,6 +79,123 @@ func GetAccessNodes() []AccessNodeInfo {
 	return accessNodes
 }
 
+func GetBlockByHeight(blockHeight uint64) (*Block, error) {
+	ctx := context.Background()
+
+	accessNodes := GetAccessNodes()
+
+	var accessNode *AccessNodeInfo = nil
+
+	// find access node for start height
+	for _, node := range accessNodes {
+		if node.StartHeight <= blockHeight && (node.EndHeight == 0 || node.EndHeight >= blockHeight) {
+			accessNode = &node
+			break
+		}
+	}
+
+	if accessNode == nil {
+		panic("No access node for height range")
+	}
+
+	var c AccessClient
+
+	if accessNode.IsLegacy {
+		c = newLegacyClient(accessNode.Address)
+	} else {
+		c = newClient(accessNode.Address)
+	}
+
+	defer c.Close()
+
+	block, err := c.GetBlockByHeight(ctx, blockHeight)
+
+	if err != nil {
+		log.Error().Msg(fmt.Sprintf("Error getting block by height %d: %s", blockHeight, err))
+		return nil, err
+	}
+
+	return block, err
+}
+
+func GetCollectionById(blockHeight uint64, collectionId []byte) (*Collection, error) {
+	ctx := context.Background()
+
+	accessNodes := GetAccessNodes()
+
+	var accessNode *AccessNodeInfo = nil
+
+	// find access node for start height
+	for _, node := range accessNodes {
+		if node.StartHeight <= blockHeight && (node.EndHeight == 0 || node.EndHeight >= blockHeight) {
+			accessNode = &node
+			break
+		}
+	}
+
+	if accessNode == nil {
+		panic("No access node for height range")
+	}
+
+	var c AccessClient
+
+	if accessNode.IsLegacy {
+		c = newLegacyClient(accessNode.Address)
+	} else {
+		c = newClient(accessNode.Address)
+	}
+
+	defer c.Close()
+
+	collection, err := c.GetCollectionByID(ctx, collectionId)
+
+	if err != nil {
+		log.Error().Msg(fmt.Sprintf("Error getting collection by id %s (%d): %s", collectionId, blockHeight, err))
+		return nil, err
+	}
+
+	return collection, err
+}
+
+func GetTransactionResult(blockHeight uint64, transactionId []byte) (*TransactionResult, error) {
+	ctx := context.Background()
+
+	accessNodes := GetAccessNodes()
+
+	var accessNode *AccessNodeInfo = nil
+
+	// find access node for start height
+	for _, node := range accessNodes {
+		if node.StartHeight <= blockHeight && (node.EndHeight == 0 || node.EndHeight >= blockHeight) {
+			accessNode = &node
+			break
+		}
+	}
+
+	if accessNode == nil {
+		panic("No access node for height range")
+	}
+
+	var c AccessClient
+
+	if accessNode.IsLegacy {
+		c = newLegacyClient(accessNode.Address)
+	} else {
+		c = newClient(accessNode.Address)
+	}
+
+	defer c.Close()
+
+	transactionResult, err := c.GetTransactionResult(ctx, transactionId)
+
+	if err != nil {
+		log.Error().Msg(fmt.Sprintf("Error getting transaction result %s (%d): %s", transactionId, blockHeight, err))
+		return nil, err
+	}
+
+	return transactionResult, err
+}
+
 func GetEvents(requestEventType string, startHeight uint64, endHeight uint64) (GetEventsResponse, error) {
 	ctx := context.Background()
 
@@ -94,6 +213,7 @@ func GetEvents(requestEventType string, startHeight uint64, endHeight uint64) (G
 		for _, node := range accessNodes {
 			if node.StartHeight <= startRequestHeight && (node.EndHeight == 0 || node.EndHeight >= startRequestHeight) {
 				accessNode = &node
+				break
 			}
 		}
 
@@ -179,6 +299,7 @@ func GetLatestBlockHeight() (GetLatestBlockHeightResponse, error) {
 
 	for _, node := range accessNodes {
 		if accessNode == nil || accessNode.StartHeight < node.StartHeight {
+			node := node
 			accessNode = &node
 		}
 	}
@@ -208,8 +329,9 @@ func GetLatestBlockHeight() (GetLatestBlockHeightResponse, error) {
 	}
 
 	return GetLatestBlockHeightResponse{
+		LatestBlockId: rpcconvert.MessageToIdentifier(result.GetBlock().Id),
 		LatestBlockHeight: result.GetBlock().Height,
-		ApiCalls: 1,
+		ApiCalls:          1,
 	}, nil
 }
 
@@ -223,6 +345,7 @@ func ExecuteScript(script string, arguments []cadence.Value) (ExecuteScriptRespo
 
 	for _, node := range accessNodes {
 		if accessNode == nil || accessNode.StartHeight < node.StartHeight {
+			node := node
 			accessNode = &node
 		}
 	}
@@ -252,7 +375,7 @@ func ExecuteScript(script string, arguments []cadence.Value) (ExecuteScriptRespo
 	result, err := latestClient.rpcClient.ExecuteScriptAtLatestBlock(ctx, &access.ExecuteScriptAtLatestBlockRequest{
 		Script:    []byte(script),
 		Arguments: args,
-	})
+	}, grpc.MaxCallRecvMsgSize(1024*1024*50))
 
 	if err != nil {
 		return ExecuteScriptResponse{

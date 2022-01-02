@@ -3,6 +3,7 @@ package main
 import (
 	"beam/beam"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/onflow/cadence"
@@ -24,6 +25,9 @@ func serve(ctx context.Context, listenPort string) (err error) {
 	mux.HandleFunc("/events", HandleRequest(HandleEventsRequest))
 	mux.HandleFunc("/latest-block-height", HandleRequest(HandleLatestBlockHeightRequest))
 	mux.HandleFunc("/execute-script", HandleRequest(ExecuteScript))
+	mux.HandleFunc("/block", HandleRequest(HandleBlockByHeightRequest))
+	mux.HandleFunc("/collection", HandleRequest(HandleGetCollectionByIdRequest))
+	mux.HandleFunc("/transaction-result", HandleRequest(HandleGetTransactionResultRequest))
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", listenPort),
@@ -146,6 +150,109 @@ func HandleEventsRequest(r *http.Request) (int, interface{}) {
 	}
 
 	return 200, response
+}
+
+func HandleBlockByHeightRequest(r *http.Request) (int, interface{}) {
+	log.Debug().Msg(fmt.Sprintf("HandleBlockByHeightRequest: %s", r.URL.Query()))
+	height, _ := strconv.ParseUint(r.URL.Query()["height"][0], 10, 64)
+
+	block, err := beam.GetBlockByHeight(height)
+
+	type ErrorResponse struct {
+		ApiCalls uint32
+		Error    interface{}
+	}
+
+	type GetBlockByHeightResponse struct {
+		ApiCalls uint32
+		Block    beam.Block
+	}
+
+	if err != nil {
+		return 500, ErrorResponse{
+			ApiCalls: 0,
+			Error:    fmt.Sprintf("%s", err),
+		}
+	}
+
+	return 200, GetBlockByHeightResponse{
+		ApiCalls: 1,
+		Block:    *block,
+	}
+}
+
+func HandleGetCollectionByIdRequest(r *http.Request) (int, interface{}) {
+	log.Debug().Msg(fmt.Sprintf("HandleGetCollectionByIdRequest: %s", r.URL.Query()))
+	height, _ := strconv.ParseUint(r.URL.Query()["height"][0], 10, 64)
+	id, err := hex.DecodeString(r.URL.Query()["id"][0])
+
+	type ErrorResponse struct {
+		ApiCalls uint32
+		Error    interface{}
+	}
+
+	if err != nil {
+		return 500, ErrorResponse{
+			ApiCalls: 0,
+			Error:    fmt.Sprintf("Error decoding collection id: %s", err),
+		}
+	}
+
+	collection, err := beam.GetCollectionById(height, id)
+
+	type GetCollectionByIdResponse struct {
+		ApiCalls   uint32
+		Collection beam.Collection
+	}
+
+	if err != nil {
+		return 500, ErrorResponse{
+			ApiCalls: 0,
+			Error:    fmt.Sprintf("%s", err),
+		}
+	}
+
+	return 200, GetCollectionByIdResponse{
+		ApiCalls:   1,
+		Collection: *collection,
+	}
+}
+
+func HandleGetTransactionResultRequest(r *http.Request) (int, interface{}) {
+	log.Debug().Msg(fmt.Sprintf("HandleGetTransactionResultRequest: %s", r.URL.Query()))
+	height, _ := strconv.ParseUint(r.URL.Query()["height"][0], 10, 64)
+	id, err := hex.DecodeString(r.URL.Query()["id"][0])
+
+	type ErrorResponse struct {
+		ApiCalls uint32
+		Error    interface{}
+	}
+
+	if err != nil {
+		return 500, ErrorResponse{
+			ApiCalls: 0,
+			Error:    fmt.Sprintf("Error decoding transaction id: %s", err),
+		}
+	}
+
+	transactionResult, err := beam.GetTransactionResult(height, id)
+
+	type GetTransactionResultResponse struct {
+		ApiCalls   uint32
+		Result beam.TransactionResult
+	}
+
+	if err != nil {
+		return 500, ErrorResponse{
+			ApiCalls: 0,
+			Error:    fmt.Sprintf("%s", err),
+		}
+	}
+
+	return 200, GetTransactionResultResponse{
+		ApiCalls:   1,
+		Result: *transactionResult,
+	}
 }
 
 func HandleLatestBlockHeightRequest(r *http.Request) (int, interface{}) {

@@ -7,13 +7,55 @@ import (
 	"github.com/onflow/flow/protobuf/go/flow/access"
 	legacyaccess "github.com/onflow/flow/protobuf/go/flow/legacy/access"
 	legacyentities "github.com/onflow/flow/protobuf/go/flow/legacy/entities"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
+
+type Block struct {
+	Id            flow.Identifier
+	Height        uint64
+	Timestamp     int64
+	CollectionIds []flow.Identifier
+}
+
+type Collection struct {
+	Id             flow.Identifier
+	TransactionIds []flow.Identifier
+}
+
+type TransactionEvent struct {
+	TransactionIndex uint32
+	EventIndex       uint32
+	Type             string
+	Payload          []byte
+}
+
+type TransactionResult struct {
+	Status       int32
+	StatusCode   uint32
+	ErrorMessage string
+	Events       []TransactionEvent
+}
 
 type AccessClient interface {
 	GetEventsForHeightRange(
 		ctx context.Context, eventType string, startHeight, endHeight uint64,
 	) ([]flow.BlockEvents, error)
+
+	GetBlockByHeight(
+		ctx context.Context,
+		height uint64,
+	) (*Block, error)
+
+	GetCollectionByID(
+		ctx context.Context,
+		collectionId []byte,
+	) (*Collection, error)
+
+	GetTransactionResult(
+		ctx context.Context,
+		transactionId []byte,
+	) (*TransactionResult, error)
 
 	Close() error
 }
@@ -70,6 +112,93 @@ func (c *Client) GetEventsForHeightRange(
 	return blockResults, nil
 }
 
+func (c *Client) GetBlockByHeight(
+	ctx context.Context,
+	height uint64,
+) (*Block, error) {
+	getBlockByHeightRequest := access.GetBlockByHeightRequest{
+		Height: height,
+	}
+
+	getBlockByHeightResponse, err := c.rpcClient.GetBlockByHeight(ctx, &getBlockByHeightRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	collectionIds := make([]flow.Identifier, 0)
+
+	for _, coll := range getBlockByHeightResponse.Block.CollectionGuarantees {
+		collectionIds = append(collectionIds, convert.MessageToIdentifier(coll.CollectionId))
+	}
+
+	return &Block{
+		Id:            convert.MessageToIdentifier(getBlockByHeightResponse.Block.Id),
+		Height:        getBlockByHeightResponse.Block.Height,
+		Timestamp:     getBlockByHeightResponse.Block.Timestamp.Seconds,
+		CollectionIds: collectionIds,
+	}, nil
+}
+
+func (c *Client) GetCollectionByID(
+	ctx context.Context,
+	collectionId []byte,
+) (*Collection, error) {
+	getCollectionRequest := access.GetCollectionByIDRequest{
+		Id: collectionId,
+	}
+
+	getCollectionResponse, err := c.rpcClient.GetCollectionByID(ctx, &getCollectionRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	transactionIds := make([]flow.Identifier, 0)
+
+	for _, transactionId := range getCollectionResponse.Collection.TransactionIds {
+		transactionIds = append(transactionIds, convert.MessageToIdentifier(transactionId))
+	}
+
+	return &Collection{
+		Id:             convert.MessageToIdentifier(getCollectionResponse.Collection.Id),
+		TransactionIds: transactionIds,
+	}, nil
+}
+
+func (c *Client) GetTransactionResult(
+	ctx context.Context,
+	transactionId []byte,
+) (*TransactionResult, error) {
+	getTransactionRequest := access.GetTransactionRequest{
+		Id: transactionId,
+	}
+
+	getTransactionResultResponse, err := c.rpcClient.GetTransactionResult(ctx, &getTransactionRequest, grpc.MaxCallRecvMsgSize(1024*1024*50))
+
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]TransactionEvent, 0)
+
+	for _, event := range getTransactionResultResponse.Events {
+		events = append(events, TransactionEvent{
+			TransactionIndex: event.TransactionIndex,
+			EventIndex:       event.EventIndex,
+			Type:             event.Type,
+			Payload:          event.Payload,
+		})
+	}
+
+	return &TransactionResult{
+		Status:       int32(getTransactionResultResponse.Status),
+		StatusCode:   getTransactionResultResponse.StatusCode,
+		ErrorMessage: getTransactionResultResponse.ErrorMessage,
+		Events:       events,
+	}, nil
+}
+
 func (c *Client) Close() error {
 	return c.close()
 }
@@ -123,6 +252,95 @@ func (c *LegacyClient) GetEventsForHeightRange(
 	}
 
 	return blockResults, nil
+}
+
+func (c *LegacyClient) GetBlockByHeight(
+	ctx context.Context,
+	height uint64,
+) (*Block, error) {
+	getBlockByHeightRequest := legacyaccess.GetBlockByHeightRequest{
+		Height: height,
+	}
+
+	log.Debug().Msg("legacy get block by height")
+
+	getBlockByHeightResponse, err := c.rpcClient.GetBlockByHeight(ctx, &getBlockByHeightRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	collectionIds := make([]flow.Identifier, 0)
+
+	for _, coll := range getBlockByHeightResponse.Block.CollectionGuarantees {
+		collectionIds = append(collectionIds, convert.MessageToIdentifier(coll.CollectionId))
+	}
+
+	return &Block{
+		Id:            convert.MessageToIdentifier(getBlockByHeightResponse.Block.Id),
+		Height:        getBlockByHeightResponse.Block.Height,
+		Timestamp:     getBlockByHeightResponse.Block.Timestamp.Seconds,
+		CollectionIds: collectionIds,
+	}, nil
+}
+
+func (c *LegacyClient) GetCollectionByID(
+	ctx context.Context,
+	collectionId []byte,
+) (*Collection, error) {
+	getCollectionRequest := legacyaccess.GetCollectionByIDRequest{
+		Id: collectionId,
+	}
+
+	getCollectionResponse, err := c.rpcClient.GetCollectionByID(ctx, &getCollectionRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	transactionIds := make([]flow.Identifier, 0)
+
+	for _, transactionId := range getCollectionResponse.Collection.TransactionIds {
+		transactionIds = append(transactionIds, convert.MessageToIdentifier(transactionId))
+	}
+
+	return &Collection{
+		Id:             convert.MessageToIdentifier(getCollectionResponse.Collection.Id),
+		TransactionIds: transactionIds,
+	}, nil
+}
+
+func (c *LegacyClient) GetTransactionResult(
+	ctx context.Context,
+	transactionId []byte,
+) (*TransactionResult, error) {
+	getTransactionRequest := legacyaccess.GetTransactionRequest{
+		Id: transactionId,
+	}
+
+	getTransactionResultResponse, err := c.rpcClient.GetTransactionResult(ctx, &getTransactionRequest, grpc.MaxCallRecvMsgSize(1024*1024*50))
+
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]TransactionEvent, 0)
+
+	for _, event := range getTransactionResultResponse.Events {
+		events = append(events, TransactionEvent{
+			TransactionIndex: event.TransactionIndex,
+			EventIndex:       event.EventIndex,
+			Type:             event.Type,
+			Payload:          event.Payload,
+		})
+	}
+
+	return &TransactionResult{
+		Status:       int32(getTransactionResultResponse.Status),
+		StatusCode:   getTransactionResultResponse.StatusCode,
+		ErrorMessage: getTransactionResultResponse.ErrorMessage,
+		Events:       events,
+	}, nil
 }
 
 func legacyMessagesToEvents(m []*legacyentities.Event) []flow.Event {
