@@ -51,8 +51,13 @@ type AccessNodeInfo struct {
 	IsLegacy    bool
 }
 
+var accessNodesLoaded = false
+var accessNodes []AccessNodeInfo
+
 func GetAccessNodes() []AccessNodeInfo {
-	var accessNodes []AccessNodeInfo
+	if accessNodesLoaded {
+		return accessNodes
+	}
 
 	accessNodesFile := os.Getenv("ACCESS_NODES")
 
@@ -66,13 +71,21 @@ func GetAccessNodes() []AccessNodeInfo {
 		panic(err)
 	}
 
+	defer file.Close()
+
 	b, err := ioutil.ReadAll(file)
+
+	if err != nil {
+		panic(err)
+	}
 
 	err = json.Unmarshal(b, &accessNodes)
 
 	if err != nil {
 		panic(err)
 	}
+
+	accessNodesLoaded = true
 
 	return accessNodes
 }
