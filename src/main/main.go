@@ -87,6 +87,19 @@ func main() {
 		listenPort = "8080"
 	}
 
+	log.Debug().Msg(fmt.Sprintf("ACCESS_NODES=%s", os.Getenv("ACCESS_NODES")))
+
+	accessNodes := beam.GetAccessNodes()
+
+	log.Debug().Msg("Access Nodes:")
+	for _, node := range accessNodes {
+		var legacy = 0
+		if node.IsLegacy {
+			legacy = 1
+		}
+		log.Debug().Msg(fmt.Sprintf("%d - %d: %s (Legacy=%d)", node.StartHeight, node.EndHeight, node.Address, legacy))
+	}
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
